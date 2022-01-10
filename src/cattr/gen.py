@@ -24,6 +24,7 @@ from ._compat import (
     is_annotated,
     is_bare,
     is_generic,
+    is_mapping,
 )
 from .generics import deep_copy_with
 
@@ -54,6 +55,7 @@ def make_dict_unstructure_fn(
     converter,
     _cattrs_omit_if_default: bool = False,
     _cattrs_use_linecache: bool = True,
+    _cattrs_extra_keys_field: Optional[str] = None,
     **kwargs,
 ):
     """
@@ -137,8 +139,15 @@ def make_dict_unstructure_fn(
                 invoke = f"{unstruct_handler_name}(instance.{attr_name})"
             else:
                 invoke = f"instance.{attr_name}"
-
-            if d is not attr.NOTHING and (
+            
+            if _cattrs_extra_keys_field and _cattrs_extra_keys_field == attr_name:
+                if not is_mapping(t):
+                    raise ValueError(f"extra keys field '{_cattrs_extra_keys_field}' is not a mapping")
+                post_lines += [
+                    f"    extra = {invoke}",
+                    "    res.update(extra)"
+                ]
+            elif d is not attr.NOTHING and (
                 (
                     _cattrs_omit_if_default
                     and override.omit_if_default is not False
@@ -209,6 +218,7 @@ def make_dict_structure_fn(
     _cattrs_forbid_extra_keys: bool = False,
     _cattrs_use_linecache: bool = True,
     _cattrs_prefer_attrib_converters: bool = False,
+    _cattrs_extra_keys_field: Optional[str] = None,
     **kwargs,
 ) -> Callable[[Mapping[str, Any]], T]:
     """Generate a specialized dict structuring function for an attrs class."""
@@ -250,8 +260,11 @@ def make_dict_structure_fn(
         resolve_types(cl)
 
     lines.append(f"def {fn_name}(o, *_):")
+    if _cattrs_forbid_extra_keys or _cattrs_extra_keys_field:
+        lines.append("  extra_fields = set(o.keys()) - __c_a")
     lines.append("  res = {")
     allowed_fields = set()
+    extra_keys_field_found = False
     for a in attrs:
         an = a.name
         override = kwargs.pop(an, _neutral)
@@ -286,9 +299,19 @@ def make_dict_structure_fn(
 
         ian = an if (is_dc or an[0] != "_") else an[1:]
         kn = an if override.rename is None else override.rename
-        allowed_fields.add(kn)
+        if an != _cattrs_extra_keys_field:
+            allowed_fields.add(kn)
+
         globs[f"type_{an}"] = t
-        if a.default is NOTHING:
+        if an == _cattrs_extra_keys_field:
+            extra_keys_field_found = True
+            if not is_mapping(t):
+                raise ValueError(f"extra keys field '{an}' is not a mapping")
+
+            lines.append(
+                f"    '{ian}': {struct_handler_name}({{ k: o[k] for k in extra_fields }}, type_{an}),"
+            )
+        elif a.default is NOTHING:
             if handler:
                 lines.append(
                     f"    '{ian}': {struct_handler_name}(o['{kn}'], type_{an}),"
@@ -305,13 +328,13 @@ def make_dict_structure_fn(
                 post_lines.append(f"    res['{ian}'] = o['{kn}']")
 
     lines.append("    }")
-    if _cattrs_forbid_extra_keys:
+    if _cattrs_forbid_extra_keys or _cattrs_extra_keys_field:
         globs["__c_a"] = allowed_fields
+    if _cattrs_forbid_extra_keys and not extra_keys_field_found:
         post_lines += [
-            "  unknown_fields = set(o.keys()) - __c_a",
-            "  if unknown_fields:",
+            "  if extra_fields:",
             "    raise Exception(",
-            f"      'Extra fields in constructor for {cl_name}: ' + ', '.join(unknown_fields)"
+            f"      'Extra fields in constructor for {cl_name}: ' + ', '.join(extra_fields)"
             "    )",
         ]
 

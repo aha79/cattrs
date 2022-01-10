@@ -584,6 +584,7 @@ class GenConverter(Converter):
     __slots__ = (
         "omit_if_default",
         "forbid_extra_keys",
+        "extra_keys_field",
         "type_overrides",
         "_unstruct_collection_overrides",
     )
@@ -594,6 +595,7 @@ class GenConverter(Converter):
         unstruct_strat: UnstructureStrategy = UnstructureStrategy.AS_DICT,
         omit_if_default: bool = False,
         forbid_extra_keys: bool = False,
+        extra_keys_field: Optional[str] = None,
         type_overrides: Mapping[Type, AttributeOverride] = {},
         unstruct_collection_overrides: Mapping[Type, Callable] = {},
         prefer_attrib_converters: bool = False,
@@ -605,6 +607,7 @@ class GenConverter(Converter):
         )
         self.omit_if_default = omit_if_default
         self.forbid_extra_keys = forbid_extra_keys
+        self.extra_keys_field = extra_keys_field
         self.type_overrides = dict(type_overrides)
 
         self._unstruct_collection_overrides = unstruct_collection_overrides
@@ -723,6 +726,7 @@ class GenConverter(Converter):
             cl,
             self,
             _cattrs_omit_if_default=self.omit_if_default,
+            _cattrs_extra_keys_field=self.extra_keys_field,
             **attrib_overrides,
         )
         return h
@@ -742,6 +746,7 @@ class GenConverter(Converter):
             self,
             _cattrs_forbid_extra_keys=self.forbid_extra_keys,
             _cattrs_prefer_attrib_converters=self._prefer_attrib_converters,
+            _cattrs_extra_keys_field=self.extra_keys_field,
             **attrib_overrides,
         )
         # only direct dispatch so that subclasses get separately generated
