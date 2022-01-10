@@ -26,7 +26,7 @@ from ._compat import (
     is_generic,
     is_mapping,
 )
-from .generics import deep_copy_with
+from ._generics import deep_copy_with
 
 if TYPE_CHECKING:  # pragma: no cover
     from cattr.converters import Converter
